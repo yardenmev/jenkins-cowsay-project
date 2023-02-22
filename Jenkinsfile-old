@@ -1,0 +1,36 @@
+// EC2_ip=52.210.230.97
+// username=ubuntu
+// 
+pipeline {
+    agent any
+    stages {
+        stage('Build image') {
+            steps {
+                sh 'docker build -t cowsay:yarden .'
+            }
+        }
+
+        stage('push image') {
+            steps {
+                sh """
+                aws ecr get-login-password --region eu-west-1 | docker login --username AWS --password-stdin 644435390668.dkr.ecr.eu-west-1.amazonaws.com
+                docker tag cowsay:yarden 644435390668.dkr.ecr.eu-west-1.amazonaws.com/cowsay:yarden
+                docker push 644435390668.dkr.ecr.eu-west-1.amazonaws.com/cowsay:yarden
+                """
+            }
+        }
+
+        stage('Deploy to EC2') {
+            steps {
+                withCredentials([sshUserPrivateKey(credentialsId: "yarden-EC2-SSH", keyFileVariable: 'key')]) {
+                    sh """
+                    scp -i ${key} -o StrictHostKeyChecking=no Dockerscript.sh ubuntu@52.210.230.97:/home/ubuntu/Dockerscript.sh
+                    ssh -i ${key} -v -o StrictHostKeyChecking=no ubuntu@52.210.230.97 sh /home/ubuntu/Dockerscript.sh 3005
+                    sleep 5
+                    curl http://52.210.230.97:3005/working!
+                    ssh -i ${key} -v -o StrictHostKeyChecking=no ubuntu@52.210.230.97 docker stop cowsay-yarden
+                }
+            }
+        }
+    }
+}
